@@ -38,15 +38,23 @@ int main(void)
 	while (1) {
 		for (int i = 0; i < 80; i++) {
 			for (int j = 0; j < 50; j++) {
-				gotoxy(i, j);
-				if(getCursorChar()!=VM.GetMatrix()[j][i]) {
-					std::cout << VM.GetMatrix()[j][i];
+				if (VM.GetMatrix()[j][i] != 0)
+				{
+					gotoxy(i, j);
+					char c = getCursorChar();
+					if (c != VM.GetMatrix()[j][i]) {
+						std::cout << VM.GetMatrix()[j][i];
+					}
 				}
 			}
 		}
 		for (int i = 0; i < 128; i++) {
 			if (I.indicator[i] == Input::KeyCombination::HOLDING)
+			{
 				VM.ReceiveKey(I.KeyMassive[i].first);
+				while (I.indicator[i] == Input::KeyCombination::HOLDING)
+					std::this_thread::sleep_for(std::chrono::milliseconds(25));
+			}
 		}
 	}
 	std::this_thread::sleep_for(std::chrono::hours(60));

@@ -20,7 +20,7 @@ private:
 	// 0x1500 = COMMAND_PROMPT/INTERPRET_STATE(0/1)					
 	// 0x1501-0x1502 = INTERPRET_ADDRESS						
 	// 0x1502-0x1504 = CONSOLE_CURSOR_INFO (0x1502 = x, 0x1503 = y)
-	/* */
+	// 0x1505-0X1506 = 
 	/* 0x1500-0xFFFF = Program Data */
 	Memory *mem;
 	unsigned int myID;
@@ -46,8 +46,8 @@ public:
 	void				OpenConsole		();
 	void				CloseConsole	();
 	void				Update			();
-	unsigned char**&				GetMatrix		();
-	unsigned char***				GetMatrixPtr	();
+	unsigned char**&	GetMatrix		();
+	unsigned char***	GetMatrixPtr	();
 	void				ReceiveKey		(const BYTE& key);
 /* structors */
 public:

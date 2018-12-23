@@ -56,7 +56,7 @@ VirtualMachine::~VirtualMachine() {
 	delete mem;
 	delete[] matrix;
 }
-unsigned char**&	VirtualMachine::GetMatrix() {
+unsigned char**&	VirtualMachine::GetMatrix(){
 	return matrix;
 }
 unsigned char***	VirtualMachine::GetMatrixPtr() {
@@ -102,7 +102,7 @@ void VirtualMachine::PrivateUpdate() {
 		if (byte == 0) return;
 		mem->Write(0x10FF, 0);
 		if (byte == '\r' || byte == '\n') {
-			mem->Write(0x1500, 1);
+		//	mem->Write(0x1500, 1);
 			return;
 		}
 		BYTE itr = mem->Read(0x10FE);
@@ -120,18 +120,18 @@ void VirtualMachine::TypeLetter(BYTE byte) {
 	BYTE cursorY = mem->Read(0x1503);
 	if (cursorX == 79) {
 		cursorX = 0;
+		if (cursorY == 50) {
+			Scroll();
+		}
+		else {
+			cursorY++;
+			mem->Write(0x1503, cursorY);
+		}
 	} 
 	else {
 		cursorX++;
 	}
-	if (cursorY == 50) {
-		Scroll();
-	} 
-	else {
-		cursorY++;
-		mem->Write(0x1053, cursorY);
-	}
-	mem->Write(0x1052, cursorX);
+  	mem->Write(0x1502, cursorX);
 	matrix[cursorY][cursorX] = byte;
 
 }
