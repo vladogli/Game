@@ -7,48 +7,60 @@ VirtualMachine::VirtualMachine(unsigned int ID) {
 		LoadSTDDisket();
 		SaveToDisket();
 	}
-	matrix = new unsigned char*[80];
-	for (size_t i = 0; i < 80; i++) {
-		matrix[i] = &mem->memory[i*80];
+	matrix = new unsigned char*[50];
+	for (size_t i = 0; i < 50; i++) {
+		matrix[i] = &mem->memory[i*50];
 	}
 }
 void VirtualMachine::SaveToDisket() {
-	boost::filesystem::wofstream File(SAVE_FOLDER + std::to_wstring(myID) + L".iso");
+	boost::filesystem::ofstream File(disketSaveFolder + std::to_wstring(myID) + L".iso");
 	BYTE* dest;
-	mem->Read(dest, 0x1500, 0, 0x7500);
+	mem->Read(0x1600, dest, 0x7400);
 	File << dest;
 	File.close();
 	delete dest;
 }
 bool VirtualMachine::LoadFromDisket() {
-	if (!boost::filesystem::exists(SAVE_FOLDER + std::to_wstring(myID) + L".iso")) {
+	if (!boost::filesystem::exists(disketSaveFolder + std::to_wstring(myID) + L".iso")) {
 		return 0;
 	}
-	boost::filesystem::wifstream File(SAVE_FOLDER + std::to_wstring(myID) + L".iso");
+	boost::filesystem::ifstream File(disketSaveFolder + std::to_wstring(myID) + L".iso");
 	std::string _Val, _Val1;
 	while (getline(File, _Val1)) {
 		_Val += _Val1;
 	}
 	File.close();
-	mem->Write(0x1500, _Val.c_str(), _Val.size());
+	if(_Val.size()>0) {
+		const unsigned char* _v = reinterpret_cast<const unsigned char*>(_Val.c_str());
+		mem->Write( 0x1600, _v, _Val.size());
+		delete _v;
+	}
 	return 1;
 }
 void VirtualMachine::LoadSTDDisket() {
-	boost::filesystem::wifstream File(SAVE_FOLDER + L"std.iso");
+	if (!boost::filesystem::exists(disketSaveFolder + L"std.iso")) {
+		return;
+	}
+	boost::filesystem::ifstream File(disketSaveFolder + L"std.iso");
 	std::string _Val, _Val1;
 	while (getline(File, _Val1)) {
 		_Val += _Val1;
 	}
 	File.close();
-	mem->Write(0x1500, _Val.c_str(), _Val.size());
-	return 1;
+	const unsigned char* _v = reinterpret_cast<const unsigned char*>(_Val.c_str());
+	mem->Write(0x1600, _v, _Val.size());
+	delete _v;
+	return;
 }
 VirtualMachine::~VirtualMachine() {
 	delete mem;
 	delete[] matrix;
 }
-char**&	VirtualMachine::GetMatrix() { 
+unsigned char**&	VirtualMachine::GetMatrix() {
 	return matrix;
+}
+unsigned char***	VirtualMachine::GetMatrixPtr() {
+	return &matrix;
 }
 void VirtualMachine::Update() {
 	if (threadClosed)
@@ -57,18 +69,12 @@ void VirtualMachine::Update() {
 long long int VirtualMachine::ReadNumber(ADDR addr, BYTE size) {
 	long long int returnValue = 0;
 	for (BYTE i = 0; i < size; i++) {
-		returnValue += mem->memory[addr + i] * std::pow(256, i);
+		returnValue += mem->memory[addr + i] * (long long int)std::pow(256, i);
 	}
 	return returnValue;
 }
 void VirtualMachine::ReceiveKey(const BYTE& key) {
-	BYTE size = ReadNumber(0x10FF, 1);
-	if (size >= 0xFF) {
-		mem->Write(0x10FF, size - 0x10);
-		mem->Write(0xFF0 + size, key);
-	}
-	mem->Write(0x1000 + size, &BYTE, 1);
-	mem->Write(0x10FF, size + 1);
+	mem->Write(0x10FF, key);
 }
 void VirtualMachine::UpdateThread() {
 	while (!threadClosed) {
@@ -80,7 +86,7 @@ void VirtualMachine::UpdateThread() {
 void VirtualMachine::OpenConsole() {
 	threadClosed = 0;
 	myThread = new boost::thread(
-		std::bind(VirtualMachine::UpdateThread, this));
+		std::bind(&VirtualMachine::UpdateThread, this));
 }
 void VirtualMachine::CloseConsole() {
 	threadClosed = 1;
@@ -91,5 +97,49 @@ void VirtualMachine::CloseConsole() {
 	threadClosed = 1;
 }
 void VirtualMachine::PrivateUpdate() {
-	
+	if (mem->Read(0x1500) == 0) {
+		BYTE byte = mem->Read(0x10FF);
+		if (byte == 0) return;
+		mem->Write(0x10FF, 0);
+		if (byte == '\r' || byte == '\n') {
+			mem->Write(0x1500, 1);
+			return;
+		}
+		BYTE itr = mem->Read(0x10FE);
+		mem->Write(0x1000 + itr, byte);
+		mem->Write(0x10FE, itr + 1);
+		TypeLetter(byte);
+		return;
+	}
+	else {
+
+	}
+}
+void VirtualMachine::TypeLetter(BYTE byte) {
+	BYTE cursorX = mem->Read(0x1502);
+	BYTE cursorY = mem->Read(0x1503);
+	if (cursorX == 79) {
+		cursorX = 0;
+	} 
+	else {
+		cursorX++;
+	}
+	if (cursorY == 50) {
+		Scroll();
+	} 
+	else {
+		cursorY++;
+		mem->Write(0x1053, cursorY);
+	}
+	mem->Write(0x1052, cursorX);
+	matrix[cursorY][cursorX] = byte;
+
+}
+void VirtualMachine::Scroll() {
+	for (int j = 50; j > 0; j++) {
+		memcpy(matrix[j - 1], matrix[j], 80);
+	}
+}
+void VirtualMachine::Page() {
+	mem->Fill(0, 0, 0x1000);
 }
