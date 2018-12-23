@@ -19,13 +19,13 @@ public:
 	const SIZE memSize;
 /* functions */
 public:
-	void			Write			(const ADDR, BYTE*&, const SIZE);
-	void			Write			(const ADDR, const BYTE*&, const SIZE);
-	void			Write			(const ADDR addr, BYTE byte);
-	void			Fill			(const ADDR, const BYTE, const SIZE);
-	void			Clear			(const ADDR, const SIZE);
-	void			Read			(const ADDR, BYTE*&, const SIZE)	const;
-	BYTE			Read			(const ADDR)						const;
+	void            Write           (const ADDR, BYTE*&, const SIZE);
+	void            Write           (const ADDR, const BYTE*&, const SIZE);
+	void            Write           (const ADDR addr, BYTE byte);
+	void            Fill            (const ADDR, const BYTE, const SIZE);
+	void            Clear           (const ADDR, const SIZE);
+	void            Read            (const ADDR, BYTE*&, const SIZE)              const;
+	BYTE            Read            (const ADDR)                                  const;
 /* structors */
 public:
 	Memory(SIZE);

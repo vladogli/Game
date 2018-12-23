@@ -137,10 +137,10 @@ void VirtualMachine::CloseConsole() {
 	threadClosed = 1;
 }
 bool VirtualMachine::isSymbol(BYTE _Value) {
-
+	return 1;
 }
 unsigned int VirtualMachine::StringToInt(std::string _Val) {
-	unsigned int returnValue;
+	unsigned int returnValue = 0;
 	for (size_t i = 0; i < _Val.size(); i++) {
 		if (_Val[i] > '0' && _Val[i] <= '9') {
 			returnValue += _Val[i] * std::pow(10, i);
@@ -149,6 +149,7 @@ unsigned int VirtualMachine::StringToInt(std::string _Val) {
 			break;
 		}
 	}
+	return returnValue;
 }
 void VirtualMachine::PrivateUpdate() {
 	if (mem->Read(0x1500) == 0) {
