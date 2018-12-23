@@ -36,14 +36,15 @@ int main(void)
 	VM.OpenConsole();
 	Input I;
 	while (1) {
+		auto matr = VM.GetMatrix();
 		for (int i = 0; i < 80; i++) {
 			for (int j = 0; j < 50; j++) {
-				if (VM.GetMatrix()[j][i] != 0)
+				if (matr[j][i] != 0)
 				{
 					gotoxy(i, j);
 					char c = getCursorChar();
-					if (c != VM.GetMatrix()[j][i]) {
-						std::cout << VM.GetMatrix()[j][i];
+					if (c != matr[j][i]) {
+						std::cout << matr[j][i];
 					}
 				}
 			}

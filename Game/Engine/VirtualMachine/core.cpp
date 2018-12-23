@@ -7,9 +7,9 @@ VirtualMachine::VirtualMachine(unsigned int ID) {
 		LoadSTDDisket();
 		SaveToDisket();
 	}
-	matrix = new unsigned char*[50];
-	for (size_t i = 0; i < 50; i++) {
-		matrix[i] = &mem->memory[i*50];
+	matrix = new unsigned char*[CONSOLE_CURSOR_Y_MAX];
+	for (size_t i = 0; i < CONSOLE_CURSOR_Y_MAX; i++) {
+		matrix[i] = &mem->memory[i*CONSOLE_CURSOR_Y_MAX];
 	}
 }
 void VirtualMachine::SaveToDisket() {
@@ -30,9 +30,9 @@ bool VirtualMachine::LoadFromDisket() {
 		_Val += _Val1;
 	}
 	File.close();
-	if(_Val.size()>0) {
+	if (_Val.size() > 0) {
 		const unsigned char* _v = reinterpret_cast<const unsigned char*>(_Val.c_str());
-		mem->Write( 0x1600, _v, _Val.size());
+		mem->Write(0x1600, _v, _Val.size());
 		delete _v;
 	}
 	return 1;
@@ -56,7 +56,7 @@ VirtualMachine::~VirtualMachine() {
 	delete mem;
 	delete[] matrix;
 }
-unsigned char**&	VirtualMachine::GetMatrix(){
+unsigned char**&	VirtualMachine::GetMatrix() {
 	return matrix;
 }
 unsigned char***	VirtualMachine::GetMatrixPtr() {
@@ -95,7 +95,7 @@ void VirtualMachine::Writeu8(ADDR addr, BYTE number) {
 }
 void VirtualMachine::Writeu16(ADDR addr, unsigned short int number) {
 	mem->Write(addr, number % 256);
-	mem->Write(addr+1, (number/256) % 256);
+	mem->Write(addr + 1, (number / 256) % 256);
 }
 void VirtualMachine::Writeu32(ADDR addr, unsigned int number) {
 	mem->Write(addr, number % 256);
@@ -137,7 +137,7 @@ void VirtualMachine::CloseConsole() {
 	threadClosed = 1;
 }
 bool VirtualMachine::isSymbol(BYTE _Value) {
-	return 1;
+	return _Value>=32;
 }
 unsigned int VirtualMachine::StringToInt(std::string _Val) {
 	unsigned int returnValue = 0;
@@ -152,7 +152,7 @@ unsigned int VirtualMachine::StringToInt(std::string _Val) {
 	return returnValue;
 }
 void VirtualMachine::PrivateUpdate() {
-	if (mem->Read(0x1500) == 0) {
+	if (READ_CMD_PROC_MODE == 0) {
 		BYTE byte = READ_LAST_TYPED_KEY;	//Reading a last typed key
 		if (byte == 0) return;				//If we doesn't have any key - exit
 		WRITE_LAST_TYPED_KEY(0);
@@ -160,10 +160,10 @@ void VirtualMachine::PrivateUpdate() {
 			WRITE_CMD_PROC_MODE(1);			//Sets PROCCESSING_MODE
 			return;
 		}
-		BYTE itr = mem->Read(READ_KEYBOARD_DATA_SIZE);	//Reading kbItr
+		BYTE itr = READ_KEYBOARD_DATA_SIZE;// mem->Read();	//Reading kbItr
 		mem->Write(0x1000 + itr, byte);					//Writing key to kbData
-		mem->Write(READ_KEYBOARD_DATA_SIZE, itr + 1);	//kbItr++
-		if(isSymbol(byte)) {
+		WRITE_KEYBOARD_DATA_SIZE(itr + 1);//mem->Write(READ_KEYBOARD_DATA_SIZE, itr + 1);	//kbItr++
+		if (isSymbol(byte)) {
 			TypeWord(std::string(1, char(byte)));			//show key
 		}
 		return;
@@ -174,16 +174,17 @@ void VirtualMachine::PrivateUpdate() {
 		for (BYTE i = 0; i < size; i++) {
 			if (isSymbol(mem->Read(0x1000 + i))) {
 				word += mem->Read(0x1000 + i);
-			} 
+			}
 			else {
 				if (word[0] >= '0' && word[0] <= '9') { // if word is integer
 					WriteToStack(StringToInt(word)); // Write to stack this integer					
 					word = "";
-				} else {
+				}
+				else {
 					auto lastWordAddr = Readu16(0x1505);		//Reading lastWordAddr
 					while (ReadFuncName(lastWordAddr) != word) {
-						lastWordAddr = Readu16(lastWordAddr);	
-						if (lastWordAddr < 0x1600) {		
+						lastWordAddr = Readu16(lastWordAddr);
+						if (lastWordAddr < 0x1600) {
 							TypeWord("Wrong word!");
 							return;
 						}
@@ -195,20 +196,51 @@ void VirtualMachine::PrivateUpdate() {
 	}
 }
 void VirtualMachine::TypeWord(std::string Word) {
+	BYTE x, y;
+	x = READ_CONSOLE_CURSOR_X;
+	y = READ_CONSOLE_CURSOR_Y;
+
+	COORD coord;
+	coord.X = x;
+	coord.Y = y;
+	SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
+	for (int i = 0; i < Word.size(); i++)
+	{
+		std::cout << Word[i];
+		x++;
+		if (x >= CONSOLE_CURSOR_X_MAX)
+		{
+			y++;
+			x = 0;
+			if (y >= CONSOLE_CURSOR_Y_MAX)
+				Scroll();
+			coord.X = x;
+			coord.Y = y;
+			SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
+		}
+	}
+
+
 	//Show word at coords
 }
 void VirtualMachine::NextLine() {
+	//int x = READ_CONSOLE_CURSOR_X;
+	BYTE y = READ_CONSOLE_CURSOR_Y;
+
+	WRITE_CONSOLE_CURSOR_Y(y + 1);
+	WRITE_CONSOLE_CURSOR_X(0);
 	//To Next Line
 }
 void VirtualMachine::Scroll() {
-	for (int j = 50; j > 0; j++) {
-		memcpy(matrix[j - 1], matrix[j], 80);
+	for (int j = CONSOLE_CURSOR_Y_MAX; j > 0; j++) {
+		memcpy(matrix[j - 1], matrix[j], CONSOLE_CURSOR_X_MAX);
 	}
 }
 void VirtualMachine::Page() {
 	mem->Fill(0, 0, 0x1000);
 }
-void VirtualMachine::WriteToStack(unsigned int) {
+void VirtualMachine::WriteToStack(unsigned int val) {
+
 	// Write number to stack
 }
 unsigned int VirtualMachine::ReadFromStack() {
@@ -221,13 +253,13 @@ std::string VirtualMachine::ReadFuncName(ADDR addr) {
 	}
 	std::string word;
 	int itr = 2;
-	BYTE _Value = mem->Read(addr+itr);
-	while (_Value!=0x02) {
+	BYTE _Value = mem->Read(addr + itr);
+	while (_Value != 0x02) {
 		word += _Value;
 		_Value = mem->Read(addr + itr);
 	}
 	return word;
 }
-void VirtualMachine::Execute(ADDR addr){
-	
+void VirtualMachine::Execute(ADDR addr) {
+
 }

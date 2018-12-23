@@ -3,6 +3,8 @@
 #include <boost/thread.hpp>
 #include <boost/filesystem.hpp>
 #include <functional>
+#include <Windows.h>
+
 #define ADDR unsigned int 
 #define BYTE unsigned char
 #define SIZE unsigned int
@@ -16,6 +18,10 @@
 #define WRITE_KEYBOARD_DATA_SIZE(x)        mem->Write(0x10FE, x)
 #define WRITE_LAST_TYPED_KEY(x)            mem->Write(0x10FF, x)
 #define WRITE_CMD_PROC_MODE(x)             mem->Write(0x1500, x)
+
+#define CONSOLE_CURSOR_X_MAX               80
+#define CONSOLE_CURSOR_Y_MAX               50
+
 class VirtualMachine {
 /* params */
 private:
