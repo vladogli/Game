@@ -14,15 +14,16 @@ public:
 	};
 private:
 /* variables */
+public:
 	BYTE *memory;
-	SIZE memSize;
+	const SIZE memSize;
 /* functions */
 public:
 	void			Write			(const ADDR, BYTE*&, const SIZE);
+	void			Write			(const ADDR, BYTE, const SIZE);
 	void			Fill			(const ADDR, const BYTE, const SIZE);
 	void			Clear			(const ADDR, const SIZE);
 	void			Read			(const ADDR, BYTE*&, const SIZE)	const;
-	const	SIZE&	MaxMemorySize	()									const;
 /* structors */
 public:
 	Memory(SIZE);
