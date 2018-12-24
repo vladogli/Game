@@ -3,24 +3,29 @@
 #include <boost/thread.hpp>
 #include <boost/filesystem.hpp>
 #include <functional>
-#include <Windows.h>
 
 #define ADDR unsigned int 
 #define BYTE unsigned char
 #define SIZE unsigned int
-#define READ_CONSOLE_CURSOR_X              mem->Read(0x1502)
-#define READ_CONSOLE_CURSOR_Y              mem->Read(0x1503)
-#define READ_KEYBOARD_DATA_SIZE            mem->Read(0x10FE)
 #define READ_LAST_TYPED_KEY				   mem->Read(0x10FF)
-#define READ_CMD_PROC_MODE                 mem->Read(0x1500)
-#define WRITE_CONSOLE_CURSOR_X(x)          mem->Write(0x1502, x)
-#define WRITE_CONSOLE_CURSOR_Y(x)          mem->Write(0x1503, x)
-#define WRITE_KEYBOARD_DATA_SIZE(x)        mem->Write(0x10FE, x)
 #define WRITE_LAST_TYPED_KEY(x)            mem->Write(0x10FF, x)
+
+#define READ_KEYBOARD_DATA_SIZE            mem->Read(0x10FE)
+#define WRITE_KEYBOARD_DATA_SIZE(x)        mem->Write(0x10FE, x)
+
+#define READ_LATEST_FREE_LINE              mem->Read(0x1506)
+#define WRITE_LATEST_FREE_LINE(x)	       mem->Write(0x1506, x)
+
+#define READ_CMD_PROC_MODE                 mem->Read(0x1500)
 #define WRITE_CMD_PROC_MODE(x)             mem->Write(0x1500, x)
 
 #define CONSOLE_CURSOR_X_MAX               80
-#define CONSOLE_CURSOR_Y_MAX               50
+#define CONSOLE_CURSOR_Y_MAX               51
+
+#define READ_CONSOLE_CURSOR_X              mem->Read(0x1503)
+#define WRITE_CONSOLE_CURSOR_X(x)          mem->Write(0x1503, x)
+#define READ_CONSOLE_CURSOR_Y              mem->Read(0x1504)
+#define WRITE_CONSOLE_CURSOR_Y(x)          mem->Write(0x1504, x)
 
 class VirtualMachine {
 /* params */
@@ -35,8 +40,9 @@ private:
 
 	// 0x1500              = CMD/PROCESSING mode(0/1)					
 	// 0x1501-0x1502       = INTERPRET_ADDRESS						
-	// 0x1502-0x1504       = CONSOLE_CURSOR_INFO (0x1502 = x, 0x1503 = y)
-	// 0x1505-0X1506       = LAST_WORD_ADDRESS
+	// 0x1503-0x1504       = CONSOLE_CURSOR_INFO (0x1502 = x, 0x1503 = y)
+	// 0x1504-0x1505       = LAST_WORD_ADDRESS
+	// 0x1506              = LATEST FREE LINE
 	/* WORD FORM 
 	   0x0000-0x0001       = PREVIOUS WORD ADDRESS
 	   0x0002-0x00XX       = word name
@@ -62,6 +68,7 @@ private:
 	void                      NextLine          ();                                 //iD
 	void                      Scroll            ();                                 //iD
 	void                      Page              ();                                 //iD
+	void                      Backspace         ();                                 //iD
 
 	//DisketFuncs
 	void                      SaveToDisket      ();                                //RtW
@@ -88,6 +95,16 @@ private:
 	//Word interaction funcs
 	std::string               ReadFuncName      (ADDR addr);                        //RtW
 	void                      Execute           (ADDR addr);                        //iD
+
+
+	//Instructions
+	//
+	//
+	//
+	//
+	//
+	//
+	void                      ReadLatestKey     ();
 public:
 	void                      OpenConsole		();                                 //RtW
 	void                      CloseConsole      ();                                 //RtW

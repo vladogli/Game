@@ -29,32 +29,47 @@ char getCursorChar()
 	}
 	return c;
 }
-
-int main(void)
-{
-	VirtualMachine VM(0xABCDEF);
-	VM.OpenConsole();
+void function(VirtualMachine& VM) {
 	Input I;
 	while (1) {
-		auto matr = VM.GetMatrix();
-		for (int i = 0; i < 80; i++) {
-			for (int j = 0; j < 50; j++) {
-				if (matr[j][i] != 0)
-				{
-					gotoxy(i, j);
-					char c = getCursorChar();
-					if (c != matr[j][i]) {
-						std::cout << matr[j][i];
+		for (int i = 0; i < 128; i++) {
+			if (I.indicator[i] == Input::KeyCombination::HOLDING) {
+				VM.ReceiveKey(I.KeyMassive[i].first);
+				for (size_t j = 0; j< 10 && I.indicator[i]==Input::KeyCombination::HOLDING; j++) {
+					std::this_thread::sleep_for(std::chrono::milliseconds(25));
+				}
+				while (I.indicator[i] == Input::KeyCombination::HOLDING) {
+					std::this_thread::sleep_for(std::chrono::milliseconds(75));
+					if (I.indicator[i] == Input::KeyCombination::HOLDING) {
+						VM.ReceiveKey(I.KeyMassive[i].first);
 					}
 				}
 			}
 		}
-		for (int i = 0; i < 128; i++) {
-			if (I.indicator[i] == Input::KeyCombination::HOLDING)
-			{
-				VM.ReceiveKey(I.KeyMassive[i].first);
-				while (I.indicator[i] == Input::KeyCombination::HOLDING)
-					std::this_thread::sleep_for(std::chrono::milliseconds(25));
+	}
+}
+int main(void)
+{
+	VirtualMachine VM(0xABCDEF);
+	VM.OpenConsole();
+	boost::thread thread(function, std::ref(VM));
+	auto matr = VM.GetMatrix();
+	unsigned char** saved = new (unsigned char*[51]);
+	for (size_t j = 0; j < 51; j++) {
+		saved[j] = new unsigned char[80];
+		for (int i = 0; i < 80; i++) {
+			saved[j][i] = 0;
+		}
+	}
+	while (1) {
+		for (int i = 0; i < 80; i++) {
+			for (int j = 0; j < 50; j++) {
+				if (matr[j][i] != saved[j][i])
+				{
+					saved[j][i] = matr[j][i];
+					gotoxy(i, j);
+					std::cout << matr[j][i];
+				}
 			}
 		}
 	}

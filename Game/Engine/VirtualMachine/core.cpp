@@ -9,7 +9,7 @@ VirtualMachine::VirtualMachine(unsigned int ID) {
 	}
 	matrix = new unsigned char*[CONSOLE_CURSOR_Y_MAX];
 	for (size_t i = 0; i < CONSOLE_CURSOR_Y_MAX; i++) {
-		matrix[i] = &mem->memory[i*CONSOLE_CURSOR_Y_MAX];
+		matrix[i] = &mem->memory[i*CONSOLE_CURSOR_X_MAX];
 	}
 }
 void VirtualMachine::SaveToDisket() {
@@ -137,7 +137,7 @@ void VirtualMachine::CloseConsole() {
 	threadClosed = 1;
 }
 bool VirtualMachine::isSymbol(BYTE _Value) {
-	return _Value>=32;
+	return _Value >= 32;
 }
 unsigned int VirtualMachine::StringToInt(std::string _Val) {
 	unsigned int returnValue = 0;
@@ -156,14 +156,21 @@ void VirtualMachine::PrivateUpdate() {
 		BYTE byte = READ_LAST_TYPED_KEY;	//Reading a last typed key
 		if (byte == 0) return;				//If we doesn't have any key - exit
 		WRITE_LAST_TYPED_KEY(0);
+
 		if (byte == '\r' || byte == '\n') {	//If Return
 			WRITE_CMD_PROC_MODE(1);			//Sets PROCCESSING_MODE
 			return;
 		}
-		BYTE itr = READ_KEYBOARD_DATA_SIZE;// mem->Read();	//Reading kbItr
-		mem->Write(0x1000 + itr, byte);					//Writing key to kbData
-		WRITE_KEYBOARD_DATA_SIZE(itr + 1);//mem->Write(READ_KEYBOARD_DATA_SIZE, itr + 1);	//kbItr++
-		if (isSymbol(byte)) {
+
+		if (byte == '\b') {// backspace 
+			Backspace();
+			return;
+		}
+
+		if (byte >= 32 && byte <= 126) {
+			BYTE itr = READ_KEYBOARD_DATA_SIZE;             //Reading kbItr
+			mem->Write(0x1000 + itr, byte);					//Writing key to kbData
+			WRITE_KEYBOARD_DATA_SIZE(itr + 1);              //kbItr++
 			TypeWord(std::string(1, char(byte)));			//show key
 		}
 		return;
@@ -189,52 +196,58 @@ void VirtualMachine::PrivateUpdate() {
 							return;
 						}
 					}
-					//Execute word
+					Execute(lastWordAddr);
 				}
 			}
 		}
+		WRITE_CMD_PROC_MODE(0);
+		NextLine();
 	}
 }
 void VirtualMachine::TypeWord(std::string Word) {
 	BYTE x, y;
 	x = READ_CONSOLE_CURSOR_X;
 	y = READ_CONSOLE_CURSOR_Y;
-
-	COORD coord;
-	coord.X = x;
-	coord.Y = y;
-	SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
 	for (int i = 0; i < Word.size(); i++)
 	{
-		std::cout << Word[i];
+		if (y >= CONSOLE_CURSOR_Y_MAX) {
+			Scroll();
+			y = READ_CONSOLE_CURSOR_Y;
+		}
+		matrix[y][x] = (unsigned char)Word[i];
 		x++;
 		if (x >= CONSOLE_CURSOR_X_MAX)
 		{
 			y++;
 			x = 0;
-			if (y >= CONSOLE_CURSOR_Y_MAX)
-				Scroll();
-			coord.X = x;
-			coord.Y = y;
-			SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
 		}
 	}
-
-
+	WRITE_CONSOLE_CURSOR_X(x);
+	WRITE_CONSOLE_CURSOR_Y(y);
 	//Show word at coords
 }
 void VirtualMachine::NextLine() {
-	//int x = READ_CONSOLE_CURSOR_X;
 	BYTE y = READ_CONSOLE_CURSOR_Y;
-
-	WRITE_CONSOLE_CURSOR_Y(y + 1);
+	if (y == 49) {
+		WRITE_CONSOLE_CURSOR_Y(51);
+	}
+	else {
+		WRITE_CONSOLE_CURSOR_Y(y + 1);
+	}
 	WRITE_CONSOLE_CURSOR_X(0);
+	if(!READ_CMD_PROC_MODE) {
+		TypeWord(">");
+	}
 	//To Next Line
 }
 void VirtualMachine::Scroll() {
-	for (int j = CONSOLE_CURSOR_Y_MAX; j > 0; j++) {
+	for (int j = 0; j < CONSOLE_CURSOR_X_MAX; j++) {
+		matrix[CONSOLE_CURSOR_Y_MAX - 1][j] = 0;
+	}
+	for (int j = 1; j < CONSOLE_CURSOR_Y_MAX; j++) {
 		memcpy(matrix[j - 1], matrix[j], CONSOLE_CURSOR_X_MAX);
 	}
+	WRITE_CONSOLE_CURSOR_Y(READ_CONSOLE_CURSOR_Y - 2);
 }
 void VirtualMachine::Page() {
 	mem->Fill(0, 0, 0x1000);
@@ -262,4 +275,18 @@ std::string VirtualMachine::ReadFuncName(ADDR addr) {
 }
 void VirtualMachine::Execute(ADDR addr) {
 
+}
+void VirtualMachine::Backspace() {
+	BYTE x = READ_CONSOLE_CURSOR_X;
+	if (x == 0) return;
+	BYTE y = READ_CONSOLE_CURSOR_Y;
+	matrix[y][x] = ' ';
+	if (x == 1) {
+		if (READ_CMD_PROC_MODE) {
+			WRITE_CONSOLE_CURSOR_X(x - 1);
+		}
+	} 
+	else {
+		WRITE_CONSOLE_CURSOR_X(x - 1);
+	}
 }
