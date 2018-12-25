@@ -108,7 +108,8 @@ private:
 	//
 	//...
 	void                      ReadLatestKey     ();
-
+	void                      WriteKey          ();
+	void                      WriteWord();
 	//0xFF - End of word(return)
 	//Assembly instructions
 	std::function<BYTE(ADDR addr)> **funcs;

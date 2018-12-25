@@ -156,100 +156,116 @@ unsigned int VirtualMachine::StringToInt(std::string _Val) {
 	}
 	return returnValue;
 }
+
 void VirtualMachine::PrivateUpdate() {
+
 	if (READ_CMD_PROC_MODE == 0) {
-		BYTE byte = READ_LAST_TYPED_KEY;	//Reading a last typed key
-		if (byte == 0) {
-			return;				//If we doesn't have any key - exit
-		}
-		WRITE_LAST_TYPED_KEY(0);
-
-		if (byte == '\r' || byte == '\n') {	//If Return
-			WRITE_CMD_PROC_MODE(1);			//Sets PROCCESSING_MODE
-			return;
-		}
-
-		if (byte == '\b') {// backspace 
-			if (READ_KEYBOARD_DATA_SIZE >= 1) {
-				WRITE_KEYBOARD_DATA_SIZE(READ_KEYBOARD_DATA_SIZE - 1);
-				Backspace();
-			}
-			return;
-		}
-
-		if (byte >= 32 && byte <= 126) {
-			BYTE itr = READ_KEYBOARD_DATA_SIZE;             //Reading kbItr
-			mem->Write(0x1000 + itr, byte);					//Writing key to kbData
-			WRITE_KEYBOARD_DATA_SIZE(itr + 1);              //kbItr++
-			TypeWord(std::string(1, char(byte)));			//show key
-		}
-		return;
+		WriteKey();
 	}
 	else {
-		BYTE size = READ_KEYBOARD_DATA_SIZE; // Read kbSize
-		std::string word;
-		for (BYTE i = 0; i <= size; i++) {
-			if (size != i && isSymbol(mem->Read(0x1000 + i))) {
-				word += mem->Read(0x1000 + i);
-				continue;
-			}
-			//else {
-			if (word[0] >= '0' && word[0] <= '9') { // if word is integer
-				WriteToStack(StringToInt(word)); // Write to stack this integer					
-				word = "";
-				continue;
-			}
-			//else 
-			if (word != "")
-			{
-				if (word == ".") {
-					unsigned int _Value;
-					try {
-						_Value = ReadFromStack();
-					}
-					catch (exceptions exc) {
-						if (exc == STACK_UNDERFLOW) {
-							NextLine();
-							TypeWord("-1 stack undeflow");
-							goto exit;
-						}
-						return;
-					}
-					TypeWord(" " + std::to_string(_Value));
-					word = "";
-					continue;
-				}
-				auto lastWordAddr = Readu16(0x1504);		//Reading lastWordAddr
-				while (ReadFuncName(lastWordAddr) != word) {
-					lastWordAddr = Readu16(lastWordAddr);
-
-					if (lastWordAddr < 0x1500) {
-						NextLine();
-						TypeWord(" UNKNOWN TOKEN: " + word);
-						goto exit;
-					}
-				}
-				word = "";
-				try {
-					Execute(lastWordAddr);
-				}
-				catch (exceptions exc) {
-					if (exc == EXEC_ERROR) {
-						NextLine();
-						TypeWord(" EXECUTION ERROR: " + word);
-						goto exit;
-					}
-				}
-				//}
-			}
-		}
-		TypeWord(" ok");
-	exit:
-		mem->Fill(0x1000, 0, 0x100);
-		WRITE_CMD_PROC_MODE(0);
-		NextLine();
+		WriteWord();
 	}
 }
+
+void VirtualMachine::WriteWord()
+{
+	BYTE size = READ_KEYBOARD_DATA_SIZE; // Read kbSize
+	std::string word;
+	for (BYTE i = 0; i <= size; i++) {
+		if (size != i && isSymbol(mem->Read(0x1000 + i))) {
+			word += mem->Read(0x1000 + i);
+			continue;
+		}
+
+		if (word[0] >= '0' && word[0] <= '9') { // if word is integer
+			WriteToStack(StringToInt(word)); // Write to stack this integer					
+			word = "";
+			continue;
+		}
+		
+		if (word != "")
+		{
+			if (word == ".") {
+				unsigned int _Value;
+				try {
+					_Value = ReadFromStack();
+				}
+				catch (exceptions exc) {
+					if (exc == STACK_UNDERFLOW) {
+						NextLine();
+						TypeWord("-1 stack undeflow");
+						goto exit;
+					}
+					return;
+				}
+				TypeWord(" " + std::to_string(_Value));
+				word = "";
+				continue;
+			}
+			auto lastWordAddr = Readu16(0x1504);		//Reading lastWordAddr
+			while (ReadFuncName(lastWordAddr) != word) {
+				lastWordAddr = Readu16(lastWordAddr);
+
+				if (lastWordAddr < 0x1500) {
+					NextLine();
+					TypeWord(" UNKNOWN TOKEN: " + word);
+					goto exit;
+				}
+			}
+			word = "";
+			try {
+				Execute(lastWordAddr);
+			}
+			catch (exceptions exc) {
+				if (exc == EXEC_ERROR) {
+					NextLine();
+					TypeWord(" EXECUTION ERROR: " + word);
+					goto exit;
+				}
+			}
+		}
+	}
+
+
+	TypeWord(" ok");
+
+exit:
+	mem->Fill(0x1000, 0, 0x100);
+	WRITE_CMD_PROC_MODE(0);
+	NextLine();
+}
+
+
+void VirtualMachine::WriteKey()
+{
+	BYTE byte = READ_LAST_TYPED_KEY;	//Reading a last typed key
+	if (byte == 0) {
+		return;				//If we doesn't have any key - exit
+	}
+	WRITE_LAST_TYPED_KEY(0);
+
+	if (byte == '\r' || byte == '\n') {	//If Return
+		WRITE_CMD_PROC_MODE(1);			//Sets PROCCESSING_MODE
+		//return;
+	}
+
+	if (byte == '\b') {// backspace 
+		if (READ_KEYBOARD_DATA_SIZE >= 1) {
+			WRITE_KEYBOARD_DATA_SIZE(READ_KEYBOARD_DATA_SIZE - 1);
+			Backspace();
+		}
+		//return;
+	}
+
+	if (byte >= 32 && byte <= 126) {
+		BYTE itr = READ_KEYBOARD_DATA_SIZE;             //Reading kbItr
+		mem->Write(0x1000 + itr, byte);					//Writing key to kbData
+		WRITE_KEYBOARD_DATA_SIZE(itr + 1);              //kbItr++
+		TypeWord(std::string(1, char(byte)));			//show key
+	}
+	//return;
+}
+
 void VirtualMachine::TypeWord(std::string Word) {
 	BYTE x, y;
 	x = READ_CONSOLE_CURSOR_X;
