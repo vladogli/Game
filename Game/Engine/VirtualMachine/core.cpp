@@ -11,6 +11,10 @@ VirtualMachine::VirtualMachine(unsigned int ID) {
 	for (size_t i = 0; i < CONSOLE_CURSOR_Y_MAX; i++) {
 		matrix[i] = &mem->memory[i*CONSOLE_CURSOR_X_MAX];
 	}
+	funcs = new std::function<BYTE(ADDR addr)>*[0x100];
+	for (size_t i = 0; i < 0x100; i++) {
+		funcs[i] = nullptr;
+	}
 }
 void VirtualMachine::SaveToDisket() {
 	boost::filesystem::ofstream File(disketSaveFolder + std::to_wstring(myID) + L".iso");
@@ -137,13 +141,14 @@ void VirtualMachine::CloseConsole() {
 	threadClosed = 1;
 }
 bool VirtualMachine::isSymbol(BYTE _Value) {
-	return _Value >= 32;
+	return _Value > 32 && _Value <= 126;
 }
 unsigned int VirtualMachine::StringToInt(std::string _Val) {
 	unsigned int returnValue = 0;
-	for (size_t i = 0; i < _Val.size(); i++) {
-		if (_Val[i] > '0' && _Val[i] <= '9') {
-			returnValue += _Val[i] * std::pow(10, i);
+	BYTE _V = 0;
+	for (size_t i = _Val.size()-1; i != size_t(-1); i--,_V++) {
+		if (_Val[i] >= '0' && _Val[i] <= '9') {
+			returnValue += (_Val[i]-'0') * (unsigned int)std::pow(10, _V);
 		}
 		else {
 			break;
@@ -154,7 +159,9 @@ unsigned int VirtualMachine::StringToInt(std::string _Val) {
 void VirtualMachine::PrivateUpdate() {
 	if (READ_CMD_PROC_MODE == 0) {
 		BYTE byte = READ_LAST_TYPED_KEY;	//Reading a last typed key
-		if (byte == 0) return;				//If we doesn't have any key - exit
+		if (byte == 0) {
+			return;				//If we doesn't have any key - exit
+		}
 		WRITE_LAST_TYPED_KEY(0);
 
 		if (byte == '\r' || byte == '\n') {	//If Return
@@ -163,7 +170,10 @@ void VirtualMachine::PrivateUpdate() {
 		}
 
 		if (byte == '\b') {// backspace 
-			Backspace();
+			if (READ_KEYBOARD_DATA_SIZE >= 1) {
+				WRITE_KEYBOARD_DATA_SIZE(READ_KEYBOARD_DATA_SIZE - 1);
+				Backspace();
+			}
 			return;
 		}
 
@@ -178,8 +188,8 @@ void VirtualMachine::PrivateUpdate() {
 	else {
 		BYTE size = READ_KEYBOARD_DATA_SIZE; // Read kbSize
 		std::string word;
-		for (BYTE i = 0; i < size; i++) {
-			if (isSymbol(mem->Read(0x1000 + i))) {
+		for (BYTE i = 0; i <= size; i++) {
+			if (size != i && isSymbol(mem->Read(0x1000 + i))) {
 				word += mem->Read(0x1000 + i);
 			}
 			else {
@@ -187,19 +197,51 @@ void VirtualMachine::PrivateUpdate() {
 					WriteToStack(StringToInt(word)); // Write to stack this integer					
 					word = "";
 				}
-				else {
-					auto lastWordAddr = Readu16(0x1505);		//Reading lastWordAddr
-					while (ReadFuncName(lastWordAddr) != word) {
-						lastWordAddr = Readu16(lastWordAddr);
-						if (lastWordAddr < 0x1600) {
-							TypeWord("Wrong word!");
+				else if (word != "")
+				{
+					if (word == ".") {
+						unsigned int _Value;
+						try {
+							_Value = ReadFromStack();
+						}
+						catch (exceptions exc) {
+							if (exc == STACK_UNDERFLOW) {
+								NextLine();
+								TypeWord("-1 stack undeflow");
+								goto exit;
+							}
 							return;
 						}
+						TypeWord(" " + std::to_string(_Value));
+						continue;
 					}
-					Execute(lastWordAddr);
+					auto lastWordAddr = Readu16(0x1504);		//Reading lastWordAddr
+					while (ReadFuncName(lastWordAddr) != word) {
+						lastWordAddr = Readu16(lastWordAddr);
+
+						if (lastWordAddr < 0x1500) {
+							NextLine();
+							TypeWord(" UNKNOWN TOKEN: " + word);
+							goto exit;
+						}
+					}
+					word = "";
+					try {
+						Execute(lastWordAddr);
+					}
+					catch (exceptions exc) {
+						if (exc == EXEC_ERROR) {
+							NextLine();
+							TypeWord(" EXECUTION ERROR: " + word);
+							goto exit;
+						}
+					}
 				}
 			}
 		}
+		TypeWord(" ok");
+	exit:
+		mem->Fill(0x1000, 0, 0x100);
 		WRITE_CMD_PROC_MODE(0);
 		NextLine();
 	}
@@ -210,17 +252,17 @@ void VirtualMachine::TypeWord(std::string Word) {
 	y = READ_CONSOLE_CURSOR_Y;
 	for (int i = 0; i < Word.size(); i++)
 	{
-		if (y >= CONSOLE_CURSOR_Y_MAX) {
-			Scroll();
-			y = READ_CONSOLE_CURSOR_Y;
-		}
-		matrix[y][x] = (unsigned char)Word[i];
 		x++;
 		if (x >= CONSOLE_CURSOR_X_MAX)
 		{
 			y++;
 			x = 0;
 		}
+		if (y >= CONSOLE_CURSOR_Y_MAX) {
+			Scroll();
+			y = READ_CONSOLE_CURSOR_Y;
+		}
+		matrix[y][x-1] = (unsigned char)Word[i];
 	}
 	WRITE_CONSOLE_CURSOR_X(x);
 	WRITE_CONSOLE_CURSOR_Y(y);
@@ -253,12 +295,23 @@ void VirtualMachine::Page() {
 	mem->Fill(0, 0, 0x1000);
 }
 void VirtualMachine::WriteToStack(unsigned int val) {
-
-	// Write number to stack
+	BYTE _Val = READ_STACK_SIZE;
+	if (_Val >= 127) {
+		memcpy(&mem->memory[0x1300], &mem->memory[0x1304], 0x1F8);
+		Writeu32(0x14FC, val);
+		return;
+	}
+	Writeu32(0x1300 + (_Val * 4), val);
+	WRITE_STACK_SIZE(_Val + 1);
 }
 unsigned int VirtualMachine::ReadFromStack() {
-	// read latest number from stack
-	return 0;
+	char _Val = READ_STACK_SIZE-1;
+	if (_Val < 0) {
+		throw STACK_UNDERFLOW;
+		return 0;
+	}
+	WRITE_STACK_SIZE(_Val);
+	return Readu32(0x1300 + (_Val * 4));
 }
 std::string VirtualMachine::ReadFuncName(ADDR addr) {
 	if (addr < 1000) {
@@ -267,26 +320,50 @@ std::string VirtualMachine::ReadFuncName(ADDR addr) {
 	std::string word;
 	int itr = 2;
 	BYTE _Value = mem->Read(addr + itr);
-	while (_Value != 0x02) {
+	while (_Value != 0x02 && itr!=0x40) {
 		word += _Value;
 		_Value = mem->Read(addr + itr);
+		itr++;
 	}
 	return word;
 }
 void VirtualMachine::Execute(ADDR addr) {
-
+	ADDR previousWordAddr = addr;
+	std::string word_name = ReadFuncName(addr);
+	size_t itr = 2;
+	BYTE _Value = mem->Read(addr + itr);
+	while (_Value != 0x02) {
+		if (itr == 0x40) {
+			throw EXEC_ERROR;
+			return;
+		}
+		word_name += _Value;
+		_Value = mem->Read(addr + itr);
+		itr++;
+	}
+	while (mem->Read(addr + itr) != 0xFF && itr <= mem->memSize-32) {
+		for (int i = 0; i < 0x100; i++) {
+			if (funcs[mem->Read(addr + itr)] == nullptr) {
+				throw EXEC_ERROR;
+				return;
+			}
+			else {
+				itr += (*funcs[mem->Read(addr + itr)])(addr + itr);
+			}
+		}
+	}
 }
 void VirtualMachine::Backspace() {
-	BYTE x = READ_CONSOLE_CURSOR_X;
-	if (x == 0) return;
+	BYTE x = READ_CONSOLE_CURSOR_X-1;
+	if (x < 0) return;
 	BYTE y = READ_CONSOLE_CURSOR_Y;
 	matrix[y][x] = ' ';
 	if (x == 1) {
 		if (READ_CMD_PROC_MODE) {
-			WRITE_CONSOLE_CURSOR_X(x - 1);
+			WRITE_CONSOLE_CURSOR_X(x);
 		}
 	} 
 	else {
-		WRITE_CONSOLE_CURSOR_X(x - 1);
+		WRITE_CONSOLE_CURSOR_X(x);
 	}
 }
