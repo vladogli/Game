@@ -23,12 +23,11 @@ VirtualMachine::VirtualMachine(unsigned int ID) {
 	funcs[0x25] = new std::function<void(ADDR&)>(std::bind(&VirtualMachine::DivRem, this, std::placeholders::_1));
 }
 void VirtualMachine::SaveToDisket() {
-	boost::filesystem::ofstream File(disketSaveFolder + std::to_wstring(myID) + L".iso");
-	BYTE* dest;
-	mem->Read(FIRST_LOAD_BYTE, dest, mem->memSize-FIRST_LOAD_BYTE);
-	File << dest;
+	boost::filesystem::ofstream File(disketSaveFolder + std::to_wstring(myID) + L".iso", std::ios_base::binary);
+	for (size_t i = FIRST_LOAD_BYTE; i < mem->memSize; i++) {
+		File << mem->memory[i];
+	}
 	File.close();
-	delete dest;
 }
 bool VirtualMachine::LoadFromDisket() {
 	if (!boost::filesystem::exists(disketSaveFolder + std::to_wstring(myID) + L".iso")) {
@@ -185,6 +184,15 @@ void VirtualMachine::WriteWord()
 				word = "";
 				continue;
 			}
+			if (word == "SAVE") {
+				SaveToDisket();
+				continue;
+			}
+			if (word == "LOAD") {
+				LoadFromDisket();
+				Page();
+				return;
+			}
 			try {
 				Execute(FindWord(word));
 				word = "";
@@ -284,7 +292,7 @@ void VirtualMachine::Scroll() {
 	WRITE_CONSOLE_CURSOR_Y(READ_CONSOLE_CURSOR_Y - 2);
 }
 void VirtualMachine::Page() {
-	mem->Fill(0, 0, 0x1000);
+	mem->Fill(0, 0, 0x1100);
 }
 void VirtualMachine::WriteToStack(unsigned int val) {
 	BYTE _Val = READ_STACK_SIZE;
@@ -325,7 +333,6 @@ VirtualMachine::WordInfo VirtualMachine::GetWordInfo(ADDR addr) {
 	return val;
 }
 void VirtualMachine::Execute(ADDR addr) {
-	std::this_thread::sleep_for(std::chrono::milliseconds(25));
 	if (Readu8(addr) > 3) {
 		throw EXEC_ERROR;
 		return;
@@ -438,7 +445,6 @@ void VirtualMachine::Compile(BYTE iterator) {
 				break;
 			}
 		}
-		nowAddr++;
 	}
 	else {
 		nowAddr += Readu16(nowAddr += 1) + 1;
