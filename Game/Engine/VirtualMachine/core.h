@@ -130,8 +130,8 @@ private:
 
 	//Instructions
 	//0x00 BRK - break
-	//0x01 STR - starts the line
 	//0x02 RET - return
+	//0x04 STR - starts the line
 	void Multiply(ADDR&);           // 0x20
 	void Division(ADDR&);           // 0x21
 	void Sum(ADDR&);                // 0x22
