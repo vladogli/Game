@@ -177,12 +177,12 @@ void VirtualMachine::WriteWord()
 			continue;
 		}
 
-		if (word[0] >= '0' && word[0] <= '9') { // if word is integer
-			WriteToStack(StringToInt(word)); // Write to stack this integer					
+		if (word[0] >= '0' && word[0] <= '9') { 
+			WriteToStack(StringToInt(word)); 		
 			word = "";
 			continue;
 		}
-		
+
 		if (word != "")
 		{
 			if (word == ".") {
@@ -192,8 +192,7 @@ void VirtualMachine::WriteWord()
 				}
 				catch (exceptions exc) {
 					if (exc == STACK_UNDERFLOW) {
-						NextLine();
-						TypeWord("-1 stack undeflow");
+						TypeWord(" -1 stack undeflow");
 						goto exit;
 					}
 					return;
@@ -202,31 +201,27 @@ void VirtualMachine::WriteWord()
 				word = "";
 				continue;
 			}
-			auto lastWordAddr = Readu16(0x1504);		//Reading lastWordAddr
-			while (ReadFuncName(lastWordAddr) != word) {
-				lastWordAddr = Readu16(lastWordAddr);
+			auto _Value = GetWordInfo(Readu32(0x1504));
+			while (_Value.word != word) {
+				_Value = GetWordInfo(_Value.previousWord);
 
-				if (lastWordAddr < 0x1500) {
-					NextLine();
+				if (_Value.previousWord < 0x1500) {
 					TypeWord(" UNKNOWN TOKEN: " + word);
 					goto exit;
 				}
 			}
 			word = "";
 			try {
-				Execute(lastWordAddr);
+				Execute(_Value.myAddr);
 			}
 			catch (exceptions exc) {
 				if (exc == EXEC_ERROR) {
-					NextLine();
 					TypeWord(" EXECUTION ERROR: " + word);
 					goto exit;
 				}
 			}
 		}
 	}
-
-
 	TypeWord(" ok");
 
 exit:
@@ -333,43 +328,59 @@ unsigned int VirtualMachine::ReadFromStack() {
 	WRITE_STACK_SIZE(_Val);
 	return Readu32(0x1300 + (_Val * 4));
 }
-std::string VirtualMachine::ReadFuncName(ADDR addr) {
-	if (addr < 1000) {
-		return "";
-	}
-	std::string word;
-	int itr = 2;
-	BYTE _Value = mem->Read(addr + itr);
-	while (_Value != 0x02 && itr != 0x40) {
-		word += _Value;
-		_Value = mem->Read(addr + itr);
+VirtualMachine::WordInfo VirtualMachine::GetWordInfo(ADDR addr) {
+	WordInfo val;
+	val.myAddr = addr;
+	BYTE itr = 0;
+	while (Readu8(addr) != 4 && addr != 0 && itr <= 64) {
+		val.word += Readu8(addr);
+		addr--;
 		itr++;
 	}
-	return word;
+	val.previousWord = Readu32(addr - 4);
+	return val;
 }
 void VirtualMachine::Execute(ADDR addr) {
-	ADDR previousWordAddr = addr;
-	std::string word_name = ReadFuncName(addr);
-	size_t itr = 2;
-	BYTE _Value = mem->Read(addr + itr);
-	while (_Value != 0x02) {
-		if (itr == 0x40) {
-			throw EXEC_ERROR;
-			return;
-		}
-		word_name += _Value;
-		_Value = mem->Read(addr + itr);
-		itr++;
+	if (Readu8(addr) >= 2 && Readu8(addr) <=3) {
+		WriteToStack(addr);
+		return;
 	}
-	while (mem->Read(addr + itr) != 0xFF && itr <= mem->memSize - 32) {
-		for (int i = 0; i < 0x100; i++) {
-			if (funcs[mem->Read(addr + itr)] == nullptr) {
+	else {
+		throw EXEC_ERROR;
+		return;
+	}
+	if (Readu8(addr) == 0) { // assembler
+		addr++;
+		auto _Val = GetWordInfo(addr);
+		while (Readu8(addr) != 0x03) {
+			if (funcs[Readu8(addr)] == nullptr) {
 				throw EXEC_ERROR;
 				return;
 			}
-			else {
-				itr += (*funcs[mem->Read(addr + itr)])(addr + itr);
+			addr = (*funcs[Readu8(addr)])(addr);
+		}
+		return;
+	}
+	while (1) {
+		addr++;
+		auto _Value = Readu32(addr);
+		if (_Value < 0xFFFFFFFD) {
+			try {
+				Execute(_Value);
 			}
+			catch (...) {
+				throw EXEC_ERROR;
+			}
+		}
+		else if (_Value == 0xFFFFFFFD) {
+			// idk what to do
+			return;
+		}
+		else if (_Value == 0xFFFFFFFE) {
+			WriteToStack(Readu32(addr += 4));
+		}
+		else {
+			return;
 		}
 	}
 }
