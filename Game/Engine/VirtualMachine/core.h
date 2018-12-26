@@ -23,15 +23,19 @@
 #define READ_STACK_SIZE                    mem->Read(0x14FF)
 #define WRITE_STACK_SIZE(x)                mem->Write(0x14FF, x)
 
-#define READ_CONSOLE_CURSOR_X              mem->Read(0x1503)
-#define WRITE_CONSOLE_CURSOR_X(x)          mem->Write(0x1503, x)
+#define READ_CONSOLE_CURSOR_X              mem->Read(0x1501)
+#define WRITE_CONSOLE_CURSOR_X(x)          mem->Write(0x1501, x)
 
-#define READ_CONSOLE_CURSOR_Y              mem->Read(0x1504)
-#define WRITE_CONSOLE_CURSOR_Y(x)          mem->Write(0x1504, x)
+#define READ_CONSOLE_CURSOR_Y              mem->Read(0x1502)
+#define WRITE_CONSOLE_CURSOR_Y(x)          mem->Write(0x1502, x)
 
+#define READ_LAST_WORD_ADDRESS             Readu32(0x1503)
+#define WRITE_LAST_WORD_ADDRESS(x)         Writeu32(0x1503, x)
+
+#define FIRST_LOAD_BYTE 0x1503
 class VirtualMachine {
 public:
-	enum exceptions { EXEC_ERROR, STACK_UNDERFLOW };
+	enum exceptions { EXEC_ERROR, STACK_UNDERFLOW, UNKNOWN_TOKEN, UNKNOWN_ERROR};
 	/* params */
 private:
 	/* 0x0000-0x1000       = matrix              */
@@ -43,10 +47,9 @@ private:
 	// 0x14FF              = N Stack size
 	/* 0x1500-0x15FF       = HW Variables       */
 
-	// 0x1500              = CMD/PROCESSING mode(0/1)					
-	// 0x1501-0x1502       = INTERPRET_ADDRESS						
-	// 0x1503-0x1504       = CONSOLE_CURSOR_INFO (0x1502 = x, 0x1503 = y)
-	// 0x1504-0x1507       = LAST_WORD_ADDRESS
+	// 0x1500              = CMD/PROCESSING/COMPILING mode(0/1)				
+	// 0x1501-0x1502       = CONSOLE_CURSOR_INFO (0x1501 = x, 0x1502 = y)	
+	// 0x1503-0x1506       = LAST_WORD_ADDRESS
 	/* WORD FORM
 	   0x0000-0x0003       = PREVIOUS WORD ADDRESS
 	   0x0004              = STR
@@ -67,7 +70,7 @@ private:
 	   0x0000-0x0003       = PREVIOUS WORD ADDRESS
 	   0x0004              = STR
 	   0x0005-0x0045       = word name, (max 64 symbols)
-	   0x0046              = word type, ptr links here 2 - var, 3 - const var
+	   0x0046              = word type, ptr links here. 2 - var, 3 - const var
 	   0x0047-0x0048       = SIZE
 	   0x004A-0xXXXX       = body of the word
 	*/
@@ -80,65 +83,70 @@ private:
 	std::wstring              disketSaveFolder = L"";
 	/* functions */
 private:
-	void                      PrivateUpdate();                                 //iD
-	void                      UpdateThread();                                 //RtW
+	void                      PrivateUpdate();                                 //RtW
+	void                      WriteKey();                                      //RtW
+	void                      WriteWord();                                     //RtW
+	void                      UpdateThread();                                  //RtW
 
 	//MatrixFuncs
-	void                      TypeWord(std::string Word);                 //RtW
-	void                      NextLine();                                 //RtW
-	void                      Scroll();                                 //RtW
-	void                      Page();                                 //RtW
-	void                      Backspace();                                 //RtW
+	void                      TypeWord(std::string Word);                      //RtW
+	void                      NextLine();                                      //RtW
+	void                      Scroll();                                        //RtW
+	void                      Page();                                          //RtW
+	void                      Backspace();                                     //RtW
 
 	//DisketFuncs
-	void                      SaveToDisket();                                //RtW
+	void                      SaveToDisket();                                  //RtW
 	bool                      LoadFromDisket();                                //RtW
-	void                      LoadSTDDisket();                                //RtW
+	void                      LoadSTDDisket();                                 //RtW
 
 	//Read/write funcs
-	BYTE                      Readu8(ADDR) const;                      //RtW
-	unsigned short int        Readu16(ADDR) const;                      //RtW
-	unsigned int              Readu32(ADDR) const;                      //RtW
-	unsigned long long int    Readu64(ADDR) const;                      //RtW
-	void                      Writeu8(ADDR, BYTE);                      //RtW
-	void                      Writeu16(ADDR, unsigned short int);		   //RtW
-	void                      Writeu32(ADDR, unsigned int);			   //RtW
-	void                      Writeu64(ADDR, unsigned long long int);	   //RtW
+	BYTE                      Readu8(ADDR) const;                              //RtW
+	unsigned short int        Readu16(ADDR) const;                             //RtW
+	unsigned int              Readu32(ADDR) const;                             //RtW
+	void                      Writeu8(ADDR, BYTE);                             //RtW
+	void                      Writeu16(ADDR, unsigned short int);		       //RtW
+	void                      Writeu32(ADDR, unsigned int);			           //RtW
 
 	//StackFuncs
-	void                      WriteToStack(unsigned int);                     //iD
+	void                      WriteToStack(unsigned int);                      //iD
 	unsigned int              ReadFromStack();                                 //iD
 
-	unsigned int              StringToInt(std::string _Val);                 //RtW
-	bool                      isSymbol(BYTE _Value);                      //RtW
-
+	unsigned int              StringToInt(std::string _Val);                   //RtW
+	bool                      isSymbol(BYTE _Value);                           //RtW
+    //Compile funcs
+	void                      Compile(BYTE Key);
+	bool                      CompileStr(ADDR &nowAddr, BYTE iterator = 0);
 	//Word interaction funcs
 	struct WordInfo {
 		std::string word;
 		ADDR previousWord;
 		ADDR myAddr;
 	};
-	WordInfo                  GetWordInfo(ADDR addr);
-	void                      Execute(ADDR addr);                             //iD
+	WordInfo                  GetWordInfo(ADDR addr);                          //RtW
+	ADDR                      FindWord(std::string Name);                      //RtW
+	void                      Execute(ADDR addr);                              //iD
 
 
 	//Instructions
 	//0x00 BRK - break
 	//0x01 STR - starts the line
 	//0x02 RET - return
-	//...
-	void                      WriteKey();
-	void                      WriteWord();
-	//0xFF - End of word(return)
-	//Assembly instructions
-	std::function<BYTE(ADDR addr)> **funcs;
+	void Multiply(ADDR&);           // 0x20
+	void Division(ADDR&);           // 0x21
+	void Sum(ADDR&);                // 0x22
+	void Difference(ADDR&);         // 0x23
+	void Remainder(ADDR&);          // 0x24
+	void DivRem(ADDR&);             // 0x25
+    //Assembly instructions ptrs
+	std::function<void(ADDR&)> **funcs;
 public:
-	void                      OpenConsole();                                 //RtW
+	void                      OpenConsole();                                  //RtW
 	void                      CloseConsole();                                 //RtW
-	void                      Update();                                 //RtW
-	unsigned char**&          GetMatrix();                                 //RtW
+	void                      Update();                                       //RtW
+	unsigned char**&          GetMatrix();                                    //RtW
 	unsigned char***          GetMatrixPtr();                                 //RtW
-	void                      ReceiveKey(const BYTE& key);                  //iD
+	void                      ReceiveKey(const BYTE& key);                    //iD
 /* structors */
 public:
 	VirtualMachine(unsigned int ID);

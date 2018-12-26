@@ -11,15 +11,21 @@ VirtualMachine::VirtualMachine(unsigned int ID) {
 	for (size_t i = 0; i < CONSOLE_CURSOR_Y_MAX; i++) {
 		matrix[i] = &mem->memory[i*CONSOLE_CURSOR_X_MAX];
 	}
-	funcs = new std::function<BYTE(ADDR addr)>*[0x100];
+	funcs = new std::function<void(ADDR&)>*[0x100];
 	for (size_t i = 0; i < 0x100; i++) {
 		funcs[i] = nullptr;
 	}
+	funcs[0x20] = new std::function<void(ADDR&)>(std::bind(&VirtualMachine::Multiply, this, std::placeholders::_1));
+	funcs[0x21] = new std::function<void(ADDR&)>(std::bind(&VirtualMachine::Division, this, std::placeholders::_1));
+	funcs[0x22] = new std::function<void(ADDR&)>(std::bind(&VirtualMachine::Sum, this, std::placeholders::_1));
+	funcs[0x23] = new std::function<void(ADDR&)>(std::bind(&VirtualMachine::Difference, this, std::placeholders::_1));
+	funcs[0x24] = new std::function<void(ADDR&)>(std::bind(&VirtualMachine::Remainder, this, std::placeholders::_1));
+	funcs[0x25] = new std::function<void(ADDR&)>(std::bind(&VirtualMachine::DivRem, this, std::placeholders::_1));
 }
 void VirtualMachine::SaveToDisket() {
 	boost::filesystem::ofstream File(disketSaveFolder + std::to_wstring(myID) + L".iso");
 	BYTE* dest;
-	mem->Read(0x1600, dest, 0x7400);
+	mem->Read(FIRST_LOAD_BYTE, dest, mem->memSize-FIRST_LOAD_BYTE);
 	File << dest;
 	File.close();
 	delete dest;
@@ -36,8 +42,7 @@ bool VirtualMachine::LoadFromDisket() {
 	File.close();
 	if (_Val.size() > 0) {
 		const unsigned char* _v = reinterpret_cast<const unsigned char*>(_Val.c_str());
-		mem->Write(0x1600, _v, _Val.size());
-		delete _v;
+		mem->Write(FIRST_LOAD_BYTE, _v, _Val.size());
 	}
 	return 1;
 }
@@ -52,8 +57,7 @@ void VirtualMachine::LoadSTDDisket() {
 	}
 	File.close();
 	const unsigned char* _v = reinterpret_cast<const unsigned char*>(_Val.c_str());
-	mem->Write(0x1600, _v, _Val.size());
-	delete _v;
+	mem->Write(FIRST_LOAD_BYTE, _v, _Val.size());
 	return;
 }
 VirtualMachine::~VirtualMachine() {
@@ -84,16 +88,6 @@ unsigned int VirtualMachine::Readu32(ADDR addr) const {
 		+ mem->memory[addr + 3] * 256 * 256 * 256;
 
 }
-unsigned long long int VirtualMachine::Readu64(ADDR addr) const {
-	return	mem->memory[addr]
-		+ mem->memory[addr + 1] * 256
-		+ mem->memory[addr + 2] * 256 * 256
-		+ mem->memory[addr + 3] * 256 * 256 * 256
-		+ mem->memory[addr + 4] * 256 * 256 * 256 * 256
-		+ mem->memory[addr + 5] * 256 * 256 * 256 * 256 * 256
-		+ mem->memory[addr + 6] * 256 * 256 * 256 * 256 * 256 * 256
-		+ mem->memory[addr + 7] * 256 * 256 * 256 * 256 * 256 * 256 * 256;
-}
 void VirtualMachine::Writeu8(ADDR addr, BYTE number) {
 	mem->Write(addr, number);
 }
@@ -106,16 +100,6 @@ void VirtualMachine::Writeu32(ADDR addr, unsigned int number) {
 	mem->Write(addr + 1, (number /= 256) % 256);
 	mem->Write(addr + 2, (number /= 256) % 256);
 	mem->Write(addr + 3, (number /= 256) % 256);
-}
-void VirtualMachine::Writeu64(ADDR addr, unsigned long long int number) {
-	mem->Write(addr, number % 256);
-	mem->Write(addr + 1, (number /= 256) % 256);
-	mem->Write(addr + 2, (number /= 256) % 256);
-	mem->Write(addr + 3, (number /= 256) % 256);
-	mem->Write(addr + 4, (number /= 256) % 256);
-	mem->Write(addr + 5, (number /= 256) % 256);
-	mem->Write(addr + 6, (number /= 256) % 256);
-	mem->Write(addr + 7, (number /= 256) % 256);
 }
 void VirtualMachine::ReceiveKey(const BYTE& key) {
 	mem->Write(0x10FF, key);
@@ -156,17 +140,14 @@ unsigned int VirtualMachine::StringToInt(std::string _Val) {
 	}
 	return returnValue;
 }
-
 void VirtualMachine::PrivateUpdate() {
 
 	if (READ_CMD_PROC_MODE == 0) {
 		WriteKey();
+		return;
 	}
-	else {
-		WriteWord();
-	}
+	WriteWord();
 }
-
 void VirtualMachine::WriteWord()
 {
 	BYTE size = READ_KEYBOARD_DATA_SIZE; // Read kbSize
@@ -182,7 +163,10 @@ void VirtualMachine::WriteWord()
 			word = "";
 			continue;
 		}
-
+		if (word == ":") { // compile
+			Compile(i);
+			goto exit;
+		}
 		if (word != "")
 		{
 			if (word == ".") {
@@ -201,24 +185,21 @@ void VirtualMachine::WriteWord()
 				word = "";
 				continue;
 			}
-			auto _Value = GetWordInfo(Readu32(0x1504));
-			while (_Value.word != word) {
-				_Value = GetWordInfo(_Value.previousWord);
-
-				if (_Value.previousWord < 0x1500) {
-					TypeWord(" UNKNOWN TOKEN: " + word);
-					goto exit;
-				}
-			}
-			word = "";
 			try {
-				Execute(_Value.myAddr);
+				Execute(FindWord(word));
+				word = "";
 			}
 			catch (exceptions exc) {
-				if (exc == EXEC_ERROR) {
-					TypeWord(" EXECUTION ERROR: " + word);
-					goto exit;
+				if (exc == UNKNOWN_TOKEN) {
+					TypeWord(" UNKNOWN_TOKEN");
 				}
+				if (exc == STACK_UNDERFLOW) {
+					TypeWord(" -1 stack undeflow");
+				}
+				if (exc == EXEC_ERROR) {
+					TypeWord(" EXECUTION ERROR.");
+				}
+				goto exit;
 			}
 		}
 	}
@@ -229,8 +210,6 @@ exit:
 	WRITE_CMD_PROC_MODE(0);
 	NextLine();
 }
-
-
 void VirtualMachine::WriteKey()
 {
 	BYTE byte = READ_LAST_TYPED_KEY;	//Reading a last typed key
@@ -241,7 +220,7 @@ void VirtualMachine::WriteKey()
 
 	if (byte == '\r' || byte == '\n') {	//If Return
 		WRITE_CMD_PROC_MODE(1);			//Sets PROCCESSING_MODE
-		//return;
+		return;
 	}
 
 	if (byte == '\b') {// backspace 
@@ -249,7 +228,7 @@ void VirtualMachine::WriteKey()
 			WRITE_KEYBOARD_DATA_SIZE(READ_KEYBOARD_DATA_SIZE - 1);
 			Backspace();
 		}
-		//return;
+		return;
 	}
 
 	if (byte >= 32 && byte <= 126) {
@@ -258,9 +237,7 @@ void VirtualMachine::WriteKey()
 		WRITE_KEYBOARD_DATA_SIZE(itr + 1);              //kbItr++
 		TypeWord(std::string(1, char(byte)));			//show key
 	}
-	//return;
 }
-
 void VirtualMachine::TypeWord(std::string Word) {
 	BYTE x, y;
 	x = READ_CONSOLE_CURSOR_X;
@@ -330,54 +307,67 @@ unsigned int VirtualMachine::ReadFromStack() {
 }
 VirtualMachine::WordInfo VirtualMachine::GetWordInfo(ADDR addr) {
 	WordInfo val;
+	if (addr < 0x1500) {
+		val.myAddr = 0;
+		val.previousWord = 0;
+		return val;
+	}
 	val.myAddr = addr;
 	BYTE itr = 0;
-	while (Readu8(addr) != 4 && addr != 0 && itr <= 64) {
+	addr--;
+		while (Readu8(addr) != 4 && addr != 0 && itr <= 64) {
 		val.word += Readu8(addr);
 		addr--;
 		itr++;
 	}
+	std::reverse(val.word.begin(), val.word.end());
 	val.previousWord = Readu32(addr - 4);
 	return val;
 }
 void VirtualMachine::Execute(ADDR addr) {
-	if (Readu8(addr) >= 2 && Readu8(addr) <=3) {
-		WriteToStack(addr);
+	std::this_thread::sleep_for(std::chrono::milliseconds(25));
+	if (Readu8(addr) > 3) {
+		throw EXEC_ERROR;
 		return;
 	}
-	else {
-		throw EXEC_ERROR;
+	if (Readu8(addr) >1) {
+		WriteToStack(addr);
 		return;
 	}
 	if (Readu8(addr) == 0) { // assembler
 		addr++;
-		auto _Val = GetWordInfo(addr);
-		while (Readu8(addr) != 0x03) {
+		while (Readu8(addr) != 0x02) {
 			if (funcs[Readu8(addr)] == nullptr) {
 				throw EXEC_ERROR;
 				return;
 			}
-			addr = (*funcs[Readu8(addr)])(addr);
+			(*funcs[Readu8(addr)])(std::ref(addr));
 		}
 		return;
 	}
+	addr++;
 	while (1) {
-		addr++;
 		auto _Value = Readu32(addr);
 		if (_Value < 0xFFFFFFFD) {
 			try {
 				Execute(_Value);
+				addr += 4;
 			}
-			catch (...) {
-				throw EXEC_ERROR;
+			catch (exceptions exc) {
+				throw exc;
+				return;
 			}
 		}
 		else if (_Value == 0xFFFFFFFD) {
-			// idk what to do
-			return;
+			WriteToStack(addr+=4);
+			while (Readu8(addr) != 0x00) {
+				addr++;
+			}
+			addr++;
 		}
 		else if (_Value == 0xFFFFFFFE) {
-			WriteToStack(Readu32(addr += 4));
+			WriteToStack(Readu32(addr + 4));
+			addr += 8;
 		}
 		else {
 			return;
@@ -398,3 +388,209 @@ void VirtualMachine::Backspace() {
 		WRITE_CONSOLE_CURSOR_X(x);
 	}
 }
+ADDR VirtualMachine::FindWord(std::string Name) {
+	auto _Value = GetWordInfo(READ_LAST_WORD_ADDRESS);
+	while (_Value.word != Name) {
+		if (_Value.previousWord < 0x1500) {
+			throw UNKNOWN_TOKEN;
+			return -1;
+		}
+		_Value = GetWordInfo(_Value.previousWord);
+	}
+	return _Value.myAddr;
+}
+void VirtualMachine::Compile(BYTE iterator) {
+	ADDR nowAddr = READ_LAST_WORD_ADDRESS;
+	if (Readu8(nowAddr) == 0) {
+		while (Readu8(nowAddr) != 0x02) {
+			if (nowAddr > mem->memSize) {
+				throw UNKNOWN_ERROR;
+				return;
+			}
+			nowAddr++;
+		}
+		nowAddr++;
+	} 
+	else if (Readu8(nowAddr) == 1) {
+		nowAddr++;
+		while (1) {
+			if (nowAddr + 16 > mem->memSize) {
+				throw UNKNOWN_ERROR;
+				return;
+			}
+			auto _Value = Readu32(nowAddr);
+			if (_Value < 0xFFFFFFFD) {
+				nowAddr += 4;
+			}
+			else if (_Value == 0xFFFFFFFD) {
+				WriteToStack(nowAddr += 4);
+				while (Readu8(nowAddr) != 0x00) {
+					nowAddr++;
+				}
+				nowAddr++;
+			}
+			else if (_Value == 0xFFFFFFFE) {
+				WriteToStack(Readu32(nowAddr + 4));
+				nowAddr += 8;
+			}
+			else {
+				nowAddr += 4;
+				break;
+			}
+		}
+		nowAddr++;
+	}
+	else {
+		nowAddr += Readu16(nowAddr += 1) + 1;
+	}
+	Writeu32(nowAddr, READ_LAST_WORD_ADDRESS);
+	nowAddr += 4;
+	iterator++;
+	std::string word;
+	BYTE size = READ_KEYBOARD_DATA_SIZE;
+	for (; iterator <= size; iterator++) {
+		if (size != iterator && isSymbol(mem->Read(0x1000 + iterator))) {
+			word += mem->Read(0x1000 + iterator);
+			continue;
+		}
+		else {
+			break;
+		}
+	}
+	Writeu8(nowAddr, 4);
+	nowAddr++;
+	for (size_t i = 0; i < word.size(); i++, nowAddr++) {
+		Writeu8(nowAddr, (unsigned char)(word[i]));
+	}
+	Writeu8(nowAddr, 1); // ENT point to ptrs word
+	ADDR execPart = nowAddr;
+	nowAddr++;
+	try{
+		if (CompileStr(nowAddr, iterator)) { // +2 because iterator on :
+			WRITE_LAST_WORD_ADDRESS(execPart);
+			return;
+		}
+	}
+	catch (exceptions exc) {
+		if (exc == UNKNOWN_TOKEN) {
+			NextLine();
+			TypeWord("ERROR. UNKNOWN_TOKEN");
+		}
+		return;
+	}
+	NextLine();
+	TypeWord("compile: ");
+	mem->Fill(0x1000, 0, 0x100);
+	while (1) {
+		BYTE byte = READ_LAST_TYPED_KEY;
+		if (byte == 0) {
+			continue;				
+		}
+		WRITE_LAST_TYPED_KEY(0);
+
+		if (byte == '\r' || byte == '\n') {	//If Enter
+			try {
+				if (CompileStr(nowAddr)) {
+					WRITE_LAST_WORD_ADDRESS(execPart);
+					return;
+				}
+				mem->Fill(0x1000, 0, 0x100);
+			}
+			catch (exceptions exc) {
+				if (exc == UNKNOWN_TOKEN) {
+					NextLine();
+					TypeWord("ERROR. UNKNOWN_TOKEN");
+				}
+				return;
+			}
+			NextLine();
+			TypeWord("compile: ");
+			mem->Fill(0x1000, 0, 0x100);
+			continue;
+		}
+		if (byte == '\b') {// backspace 
+			if (READ_KEYBOARD_DATA_SIZE >= 1) {
+				WRITE_KEYBOARD_DATA_SIZE(READ_KEYBOARD_DATA_SIZE - 1);
+				Backspace();
+			}
+			continue;
+		}
+		if (byte >= 32 && byte <= 126) {
+			BYTE itr = READ_KEYBOARD_DATA_SIZE;             //Reading kbItr
+			mem->Write(0x1000 + itr, byte);					//Writing key to kbData
+			WRITE_KEYBOARD_DATA_SIZE(itr + 1);              //kbItr++
+			TypeWord(std::string(1, char(byte)));			//show key
+		}
+	}
+}
+bool VirtualMachine::CompileStr(ADDR &nowAddr, BYTE iterator) {
+	BYTE size = READ_KEYBOARD_DATA_SIZE; // Read kbSize
+	std::vector<std::string> words;
+	for (std::string word; iterator <= size; iterator++) {
+		if (size != iterator && isSymbol(mem->Read(0x1000 + iterator))) {
+			word += mem->Read(0x1000 + iterator);
+			continue;
+		} else 
+		if (word != "")	{
+			words.push_back(word);
+			word = "";
+		}
+	}
+	for (size_t i = 0; i < words.size(); i++) {
+		if (words[i] == ";") {
+			Writeu32(nowAddr, 0xFFFFFFFF);
+			return 1; // end;
+		}
+		if (words[i][0] >= '0' && words[i][0] <= '9') {
+			Writeu32(nowAddr, 0xFFFFFFFE);
+			Writeu32(nowAddr + 4, StringToInt(words[i]));
+			nowAddr += 8;
+			continue;
+		}
+		ADDR _Value;
+		try {
+			_Value = FindWord(words[i]);
+		}
+		catch(...) {
+			throw UNKNOWN_TOKEN;
+		}
+		Writeu32(nowAddr, _Value);
+		nowAddr += 4;
+	}
+	return 0;
+}
+void VirtualMachine::Multiply(ADDR &addr) {
+	WriteToStack(ReadFromStack() * ReadFromStack());
+	addr++;
+}
+void VirtualMachine::Division(ADDR &addr) {
+	auto _Val1 = ReadFromStack();
+	auto _Val2 = ReadFromStack();
+    WriteToStack(_Val2 / _Val1);
+	addr++;
+}
+void VirtualMachine::Sum(ADDR &addr) {
+	WriteToStack(ReadFromStack() + ReadFromStack());
+	addr++;
+}
+void VirtualMachine::Difference(ADDR &addr) {
+	auto _Val1 = ReadFromStack();
+	auto _Val2 = ReadFromStack();
+	WriteToStack(_Val2 - _Val1);
+	addr++;
+}
+void VirtualMachine::Remainder(ADDR &addr) {
+	auto _Val1 = ReadFromStack();
+	auto _Val2 = ReadFromStack();
+	WriteToStack(_Val2 % _Val1);
+	addr++;
+}
+void VirtualMachine::DivRem(ADDR &addr) {
+	auto _Val1 = ReadFromStack();
+	auto _Val2 = ReadFromStack();
+	WriteToStack(_Val2 % _Val1);
+	WriteToStack(_Val2 / _Val1);
+	addr++;
+}
+
+
