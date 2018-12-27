@@ -63,7 +63,6 @@ private:
 	   0xFFFFFFFE          = put next 4 bytes to stack
 	   0xFFFFFFFD          = str start
 	   0xFFFFFFFC          = IF START, next 4 bytes = else, next 4 bytes = then
-	   0xFFFFFFFB          = goto NEXT 4 BYTES
 	   ...
 	   0x00                = str break
 	*/
@@ -158,3 +157,20 @@ public:
 #undef SIZE
 #undef BYTE
 #undef ADDR
+#undef READ_LAST_TYPED_KEY
+#undef WRITE_LAST_TYPED_KEY
+#undef READ_KEYBOARD_DATA_SIZE
+#undef WRITE_KEYBOARD_DATA_SIZE
+#undef READ_CMD_PROC_MODE
+#undef WRITE_CMD_PROC_MODE
+#undef CONSOLE_CURSOR_X_MAX
+#undef CONSOLE_CURSOR_Y_MAX
+#undef READ_STACK_SIZE
+#undef  WRITE_STACK_SIZE
+#undef  READ_CONSOLE_CURSOR_X
+#undef  WRITE_CONSOLE_CURSOR_X
+#undef  READ_CONSOLE_CURSOR_Y
+#undef  WRITE_CONSOLE_CURSOR_Y
+#undef  READ_LAST_WORD_ADDRESS
+#undef  WRITE_LAST_WORD_ADDRESS
+#undef  FIRST_LOAD_BYTE
