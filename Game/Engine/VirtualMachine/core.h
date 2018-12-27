@@ -61,8 +61,9 @@ private:
 	   for ptr to words:
 	   0xXXXX+1-0xXXXX+5   = 0xFFFFFFFF, RETURN
 	   0xFFFFFFFE          = put next 4 bytes to stack
-	   
 	   0xFFFFFFFD          = str start
+	   0xFFFFFFFC          = IF START, next 4 bytes = else, next 4 bytes = then
+	   0xFFFFFFFB          = goto NEXT 4 BYTES
 	   ...
 	   0x00                = str break
 	*/
@@ -112,20 +113,21 @@ private:
 	void                      WriteToStack(unsigned int);                      //iD
 	unsigned int              ReadFromStack();                                 //iD
 
-	unsigned int              StringToInt(std::string _Val);                   //RtW
-	bool                      isSymbol(BYTE _Value);                           //RtW
+	unsigned int              StringToInt(std::string);                        //RtW
+	bool                      isSymbol(BYTE);                                  //RtW
     //Compile funcs
-	void                      Compile(BYTE Key);
-	bool                      CompileStr(ADDR &nowAddr, BYTE iterator = 0);
+	void                      Compile(BYTE);
+	bool                      CompileStr(ADDR &, ADDR, BYTE = 0);
 	//Word interaction funcs
 	struct WordInfo {
 		std::string word;
 		ADDR previousWord;
 		ADDR myAddr;
 	};
-	WordInfo                  GetWordInfo(ADDR addr);                          //RtW
-	ADDR                      FindWord(std::string Name);                      //RtW
-	void                      Execute(ADDR addr);                              //iD
+	WordInfo                  GetWordInfo(ADDR) const;                          //RtW
+	ADDR                      FindWord(std::string);                      //RtW
+	void                      Execute(ADDR);                              //iD
+	void                      ExecuteWord(ADDR, ADDR = 0xFFFFFFFF);
 
 
 	//Instructions

@@ -313,7 +313,7 @@ unsigned int VirtualMachine::ReadFromStack() {
 	WRITE_STACK_SIZE(_Val);
 	return Readu32(0x1300 + (_Val * 4));
 }
-VirtualMachine::WordInfo VirtualMachine::GetWordInfo(ADDR addr) {
+VirtualMachine::WordInfo VirtualMachine::GetWordInfo(ADDR addr) const {
 	WordInfo val;
 	if (addr < 0x1500) {
 		val.myAddr = 0;
@@ -353,9 +353,12 @@ void VirtualMachine::Execute(ADDR addr) {
 		return;
 	}
 	addr++;
-	while (1) {
-		auto _Value = Readu32(addr);
-		if (_Value < 0xFFFFFFFD) {
+	ExecuteWord(addr);
+}
+void VirtualMachine::ExecuteWord(ADDR addr, ADDR to) {
+	auto _Value = Readu32(addr);
+	while (addr < to) {
+		if (_Value < 0xFFFFFFFC) {
 			try {
 				Execute(_Value);
 				addr += 4;
@@ -366,7 +369,7 @@ void VirtualMachine::Execute(ADDR addr) {
 			}
 		}
 		else if (_Value == 0xFFFFFFFD) {
-			WriteToStack(addr+=4);
+			WriteToStack(addr += 4);
 			while (Readu8(addr) != 0x00) {
 				addr++;
 			}
@@ -376,9 +379,26 @@ void VirtualMachine::Execute(ADDR addr) {
 			WriteToStack(Readu32(addr + 4));
 			addr += 8;
 		}
+		else if (_Value == 0xFFFFFFFC) {
+			ADDR _eV = Readu32(addr += 4); // else addr
+			ADDR _tV = Readu32(addr += 4); // then addr
+			if (_eV != 0) {
+				if (ReadFromStack()) {
+					ExecuteWord(addr += 4, _eV);
+				}
+				else {
+					ExecuteWord(_eV, _tV);
+				}
+			}
+			else if (ReadFromStack()) {
+				ExecuteWord(addr += 4, _tV);
+			}
+			addr = _tV;
+		}
 		else {
 			return;
 		}
+		_Value = Readu32(addr);
 	}
 }
 void VirtualMachine::Backspace() {
@@ -468,11 +488,16 @@ void VirtualMachine::Compile(BYTE iterator) {
 	for (size_t i = 0; i < word.size(); i++, nowAddr++) {
 		Writeu8(nowAddr, (unsigned char)(word[i]));
 	}
+	if (word.size() < 1) {
+		NextLine();
+		TypeWord("ERROR. UNKNOWN_TOKEN");
+		return;
+	}
 	Writeu8(nowAddr, 1); // ENT point to ptrs word
 	ADDR execPart = nowAddr;
 	nowAddr++;
 	try{
-		if (CompileStr(nowAddr, iterator)) { // +2 because iterator on :
+		if (CompileStr(nowAddr, execPart, iterator)) { // +2 because iterator on :
 			WRITE_LAST_WORD_ADDRESS(execPart);
 			return;
 		}
@@ -496,7 +521,7 @@ void VirtualMachine::Compile(BYTE iterator) {
 
 		if (byte == '\r' || byte == '\n') {	//If Enter
 			try {
-				if (CompileStr(nowAddr)) {
+				if (CompileStr(nowAddr, execPart)) {
 					WRITE_LAST_WORD_ADDRESS(execPart);
 					return;
 				}
@@ -529,7 +554,7 @@ void VirtualMachine::Compile(BYTE iterator) {
 		}
 	}
 }
-bool VirtualMachine::CompileStr(ADDR &nowAddr, BYTE iterator) {
+bool VirtualMachine::CompileStr(ADDR &nowAddr, ADDR execpart, BYTE iterator) {
 	BYTE size = READ_KEYBOARD_DATA_SIZE; // Read kbSize
 	std::vector<std::string> words;
 	for (std::string word; iterator <= size; iterator++) {
@@ -546,6 +571,47 @@ bool VirtualMachine::CompileStr(ADDR &nowAddr, BYTE iterator) {
 		if (words[i] == ";") {
 			Writeu32(nowAddr, 0xFFFFFFFF);
 			return 1; // end;
+		}
+		if (words[i] == "IF") {
+			Writeu32(nowAddr, 0xFFFFFFFC);
+			Writeu32(nowAddr += 4, 0x0);
+			Writeu32(nowAddr += 4, 0x0);
+			nowAddr += 4;
+			continue;
+		}
+		if (words[i] == "ELSE") {
+			ADDR elseAddr = nowAddr;
+			while (1) {
+				if (execpart == nowAddr) {
+					throw UNKNOWN_TOKEN;
+					return 0;
+				}
+				nowAddr--;
+				if (Readu32(nowAddr) == 0xFFFFFFFC && 
+					Readu32(nowAddr + 4) == 0x0    && 
+					Readu32(nowAddr + 8) == 0x0) {
+					Writeu32(nowAddr + 4, elseAddr);
+					break;
+				}
+    		}
+			nowAddr = elseAddr;
+			continue;
+		}
+		if (words[i] == "THEN") {
+			ADDR thenAddr = nowAddr;
+			while (1) {
+				nowAddr--;
+				if (execpart == nowAddr) {
+					throw UNKNOWN_TOKEN;
+					return 0;
+				}
+				if (Readu32(nowAddr) == 0xFFFFFFFC && Readu32(nowAddr + 8) == 0x0) {
+					Writeu32(nowAddr + 8, thenAddr);
+					break;
+				}
+			}
+			nowAddr = thenAddr;
+			continue;
 		}
 		if (words[i][0] >= '0' && words[i][0] <= '9') {
 			Writeu32(nowAddr, 0xFFFFFFFE);
