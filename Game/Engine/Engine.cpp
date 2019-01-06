@@ -18,8 +18,7 @@ void GameEngine::Join() {
 }
 void GameEngine::SaveKeyConfig(const std::wstring PathToFile) const {
 	boost::filesystem::ofstream file(PathToFile);
-	file << bindsSize;
-	file << '0';
+	file << (unsigned char)bindsSize;
 	for (int i = 0; i < bindsSize; i++) {
 		file << binds[i];
 	}

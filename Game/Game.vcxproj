@@ -80,8 +80,8 @@
     <LibraryPath>F:\libs\glfw-3.2.1\bin.WIN32\lib-vc2015;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>D:\boost\boost_1_69_0;$(IncludePath)</IncludePath>
-    <LibraryPath>D:\boost\boost_1_69_0\stage\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>F:\libs\boost_1_69_0;$(IncludePath)</IncludePath>
+    <LibraryPath>F:\libs\boost_1_69_0\stage\x64\lib;$(LibraryPath)</LibraryPath>
     <SourcePath>$(SourcePath)</SourcePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
